@@ -107,15 +107,11 @@ voice channel shows who is in it, who is live and whose camera is on.
 The noise suppression could be better, though. Know an open source one that
 does a better job? Please open an issue.
 
-<img src="docs/images/features/voice.webp" alt="A voice channel of seven people, two with their cameras on. One person's stream opens large, then the grid comes back.">
-
 ### Forums and polls
 
 Browse a forum's posts as cards, with their tags, first message, top reaction
 and thumbnail, search them, post in them, and read one beside the forum. Vote
 in polls, watch the votes come in, make your own and end them early.
-
-<img src="docs/images/features/forum.webp" alt="A help forum's posts as cards; one opens beside the list with its replies, then closes.">
 
 <p align="center">
   <img src="docs/images/features/poll.webp" width="640" alt="A movie night poll: an answer is picked and voted for, and the results fill in.">
