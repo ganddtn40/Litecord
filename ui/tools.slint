@@ -1,0 +1,575 @@
+// Tools: what lives beside the conversation without leaving it. Notes, a
+// pomodoro timer, a calculator, this session's clipboard, snippets and
+// bookmarks, and what Litecord itself takes: its memory and its caches.
+//
+// The panel keeps no state of its own that Rust needs to see twice: the
+// `Tools` global holds it, Rust fills its lists and strings, and the callbacks
+// below do the work. The panel only shows.
+
+import { Theme, Label, Middle, EmojiText } from "theme.slint";
+import { ActionButton, IconButton, TextField } from "controls.slint";
+import { ScrollView } from "scrollview.slint";
+
+/// One piece of text copied this session.
+export struct ToolClip {
+    text: string,
+    /// The clock time it was copied, as "14:32".
+    when: string,
+}
+
+/// Text this device keeps to put in a message.
+export struct ToolSnippet {
+    name: string,
+    body: string,
+}
+
+/// A message this device keeps, to come back to.
+export struct ToolBookmark {
+    /// The room the message is in, and the room's name as it was kept.
+    room: string,
+    room-name: string,
+    /// The message's item.
+    item: string,
+    author: string,
+    body: string,
+    /// The time it was written, as the conversation shows it.
+    when: string,
+}
+
+export global Tools {
+    /// The panel is up. Rust opens and closes it, so it can start and stop
+    /// what the panel needs while it shows.
+    in-out property <bool> open;
+    /// Notes, Timer, Calculator, Clipboard, Saved, System.
+    in-out property <int> tab;
+
+    in-out property <string> notes;
+    in-out property <string> notes-note: "";
+
+    in-out property <string> timer-phase: "Focus";
+    in-out property <string> timer-clock: "25:00";
+    in-out property <float> timer-progress: 0.0;
+    in-out property <bool> timer-running;
+    in-out property <int> timer-sessions;
+    in-out property <string> timer-note: "25 minutes of focus, then 5 minutes away.";
+
+    in-out property <string> calc-input;
+    in-out property <string> calc-result: "0";
+    in-out property <string> calc-note: "Type an expression, or use the keys.";
+
+    in-out property <[ToolClip]> clips;
+    in-out property <string> clip-note: "Kept in memory for this session only.";
+
+    in-out property <[ToolSnippet]> snippets;
+    in-out property <[ToolBookmark]> bookmarks;
+    in-out property <string> snippet-name;
+    in-out property <string> snippet-body;
+
+    /// Litecord's own memory, the computer's, and the media caches.
+    in-out property <string> own-memory: "...";
+    in-out property <string> system-memory: "...";
+    in-out property <string> cache-size: "...";
+    in-out property <string> data-folder;
+    in-out property <string> build: "";
+
+    /// A short message under the content: what just happened, or a hint.
+    in-out property <string> status;
+
+    callback close;
+    callback tab-changed(int);
+    callback notes-edited(string);
+    callback timer-start;
+    callback timer-pause;
+    callback timer-reset;
+    callback timer-skip;
+    callback calc-edited(string);
+    callback calc-key(string);
+    callback copy(string);
+    callback insert(string);
+    callback clear-clips;
+    callback add-snippet;
+    callback use-snippet(int);
+    callback copy-snippet(int);
+    callback delete-snippet(int);
+    callback jump-bookmark(int);
+    callback copy-bookmark(int);
+    callback delete-bookmark(int);
+    callback clear-cache;
+    callback open-data-folder;
+    callback refresh-system;
+}
+
+// One entry on the left. The mark is a quiet accent bar, as Settings uses.
+component ToolTab inherits Rectangle {
+    in property <int> index;
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> active;
+    callback clicked;
+
+    height: 38px;
+    border-radius: 6px;
+    background: root.active ? Theme.accent.with-alpha(0.14)
+        : touch.has-hover ? Theme.raised : transparent;
+    horizontal-stretch: 1;
+
+    HorizontalLayout {
+        padding-left: 10px; padding-right: 10px;
+        spacing: 10px;
+        Rectangle {
+            width: 3px; height: 18px; border-radius: 2px;
+            background: root.active ? Theme.accent : transparent;
+        }
+        Image {
+            width: 18px; height: 18px; source: root.icon;
+            colorize: root.active ? Theme.accent : Theme.muted;
+        }
+        Text {
+            text: root.text;
+            color: root.active ? Theme.text : Theme.secondary;
+            font-size: 14px; font-weight: root.active ? 700 : 500;
+            vertical-alignment: center; horizontal-stretch: 1;
+        }
+    }
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// A heading inside a tab.
+component ToolHeading inherits Text {
+    color: Theme.faint; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.8px;
+    vertical-stretch: 0;
+}
+
+// A key of the calculator's pad.
+component CalcKey inherits Rectangle {
+    in property <string> text;
+    in property <string> key: root.text;
+    in property <bool> accent;
+    callback pressed;
+
+    height: 40px; horizontal-stretch: 1;
+    border-radius: 6px;
+    background: root.accent ? Theme.accent : touch.has-hover ? Theme.raised : Theme.sunken;
+    border-width: 1px; border-color: root.accent ? Theme.accent : Theme.line;
+    Text {
+        text: root.text;
+        color: root.accent ? Theme.on-accent : Theme.text;
+        font-size: 17px; font-weight: 600;
+        horizontal-alignment: center; vertical-alignment: center;
+    }
+    touch := TouchArea { clicked => { root.pressed(); } }
+}
+
+// A stat line in the System tab.
+component StatRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    height: 42px;
+    VerticalLayout {
+        padding-left: 14px; padding-right: 14px;
+        alignment: center;
+        spacing: 2px;
+        Text { text: root.label; color: Theme.muted; font-size: 12px; vertical-stretch: 0; }
+        Text { text: root.value; color: Theme.text; font-size: 15px; font-weight: 600; overflow: elide; vertical-stretch: 0; }
+    }
+}
+
+export component ToolsPanel inherits Rectangle {
+    in property <float> motion: 1.0;
+    width: 100%; height: 100%;
+
+    // Takes the keys when the panel opens: the composer beneath may still
+    // have them, and would otherwise take what is typed at the panel.
+    FocusScope {
+        x: 0; y: 0; width: 0; height: 0;
+        init => { self.focus(); }
+    }
+
+    // The window behind dims, and a click outside the card closes the panel.
+    scrim := Rectangle {
+        width: 100%; height: 100%;
+        background: #000000;
+        opacity: 0.5 * min(1.0, root.motion);
+    }
+    outside := TouchArea {
+        width: parent.width; height: parent.height;
+        clicked => { Tools.close(); }
+    }
+
+    card := Rectangle {
+        width: min(root.width - 64px, 860px);
+        height: min(root.height - 64px, 610px);
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        opacity: min(1.0, root.motion);
+        background: Theme.panel;
+        border-width: 1px; border-color: Theme.line;
+        border-radius: 12px;
+        clip: true;
+        drop-shadow-blur: 40px; drop-shadow-color: #000000A0; drop-shadow-offset-y: 12px;
+
+        // Swallows clicks the entries themselves don't take.
+        TouchArea { }
+
+        HorizontalLayout {
+            spacing: 0px;
+
+            // The rail of tools.
+            sidebar := Rectangle {
+                width: 184px;
+                background: Theme.sunken;
+                VerticalLayout {
+                    padding-left: 12px; padding-right: 12px; padding-top: 16px; padding-bottom: 12px;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        spacing: 10px; padding-left: 8px; padding-bottom: 14px;
+                        Image { width: 20px; height: 20px; source: @image-url("icons/wrench.svg"); colorize: Theme.accent; }
+                        Text { text: "Tools"; color: Theme.text; font-size: 17px; font-weight: 700; vertical-alignment: center; }
+                    }
+                    ToolTab { index: 0; text: "Notes"; icon: @image-url("icons/pencil.svg"); active: Tools.tab == 0; clicked => { Tools.tab = 0; Tools.tab-changed(0); } }
+                    ToolTab { index: 1; text: "Timer"; icon: @image-url("icons/clock.svg"); active: Tools.tab == 1; clicked => { Tools.tab = 1; Tools.tab-changed(1); } }
+                    ToolTab { index: 2; text: "Calculator"; icon: @image-url("icons/calculator.svg"); active: Tools.tab == 2; clicked => { Tools.tab = 2; Tools.tab-changed(2); } }
+                    ToolTab { index: 3; text: "Clipboard"; icon: @image-url("icons/clipboard-paste.svg"); active: Tools.tab == 3; clicked => { Tools.tab = 3; Tools.tab-changed(3); } }
+                    ToolTab { index: 4; text: "Saved"; icon: @image-url("icons/bookmark.svg"); active: Tools.tab == 4; clicked => { Tools.tab = 4; Tools.tab-changed(4); } }
+                    ToolTab { index: 5; text: "System"; icon: @image-url("icons/gauge.svg"); active: Tools.tab == 5; clicked => { Tools.tab = 5; Tools.tab-changed(5); } }
+                    Rectangle { vertical-stretch: 1; }
+                    Text {
+                        text: "Ctrl+Shift+T";
+                        color: Theme.faint; font-size: 11px; font-weight: 600;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // What the chosen tool shows.
+            VerticalLayout {
+                padding-left: 22px; padding-right: 22px; padding-top: 16px; padding-bottom: 12px;
+                spacing: 10px;
+                horizontal-stretch: 1;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    Text {
+                        text: Tools.tab == 0 ? "Notes"
+                            : Tools.tab == 1 ? "Timer"
+                            : Tools.tab == 2 ? "Calculator"
+                            : Tools.tab == 3 ? "Clipboard"
+                            : Tools.tab == 4 ? "Saved" : "System";
+                        color: Theme.text; font-size: 20px; font-weight: 700;
+                        vertical-alignment: center; horizontal-stretch: 1;
+                    }
+                    Middle {
+                        IconButton {
+                            icon: @image-url("icons/x.svg"); label: "Close tools";
+                            size: 30px; glyph: 16px;
+                            clicked => { Tools.close(); }
+                        }
+                    }
+                }
+
+                // Notes
+                if Tools.tab == 0: VerticalLayout {
+                    spacing: 8px; vertical-stretch: 1;
+                    Label { text: "Kept on this computer, and saved as you type. Only Litecord reads it."; }
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: Theme.sunken; border-radius: 8px;
+                        border-width: 1px; border-color: Theme.line;
+                        note-scroll := ScrollView {
+                            x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                            content-width: self.visible-width;
+                            content-height: max(self.visible-height, note-input.preferred-height + 20px);
+                            note-input := TextInput {
+                                x: 12px; y: 10px;
+                                width: note-scroll.width - 26px;
+                                height: max(note-scroll.height - 20px, self.preferred-height);
+                                text <=> Tools.notes;
+                                single-line: false;
+                                wrap: word-wrap;
+                                font-size: 15px;
+                                color: Theme.text;
+                                selection-background-color: Theme.accent.with-alpha(0.35);
+                                selection-foreground-color: Theme.text;
+                                edited => { Tools.notes-edited(self.text); }
+                            }
+                            if Tools.notes == "": Text {
+                                x: 13px; y: 12px;
+                                width: note-scroll.width - 26px;
+                                text: "Write anything: a thought, an address, what to say next.";
+                                color: Theme.faint; font-size: 15px;
+                            }
+                        }
+                    }
+                    Text { text: Tools.notes-note; color: Theme.faint; font-size: 12px; }
+                }
+
+                // Timer
+                if Tools.tab == 1: VerticalLayout {
+                    spacing: 16px; vertical-stretch: 1;
+                    alignment: center;
+                    Text {
+                        text: Tools.timer-phase;
+                        color: Tools.timer-phase == "Focus" ? Theme.accent : Theme.live;
+                        font-size: 15px; font-weight: 700; horizontal-alignment: center;
+                    }
+                    Text {
+                        text: Tools.timer-clock;
+                        color: Theme.text; font-size: 72px; font-weight: 800;
+                        horizontal-alignment: center;
+                    }
+                    Rectangle {
+                        height: 6px; border-radius: 3px; background: Theme.sunken;
+                        width: 320px;
+                        Rectangle {
+                            width: parent.width * max(0.0, min(1.0, Tools.timer-progress));
+                            height: parent.height; border-radius: 3px;
+                            background: Tools.timer-phase == "Focus" ? Theme.accent : Theme.live;
+                            animate width { duration: 400ms; easing: linear; }
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px; alignment: center;
+                        ActionButton {
+                            text: Tools.timer-running ? "Pause" : "Start";
+                            icon: Tools.timer-running ? @image-url("icons/pause.svg") : @image-url("icons/play.svg");
+                            primary: !Tools.timer-running;
+                            clicked => { if Tools.timer-running { Tools.timer-pause(); } else { Tools.timer-start(); } }
+                        }
+                        ActionButton { text: "Reset"; icon: @image-url("icons/refresh-cw.svg"); clicked => { Tools.timer-reset(); } }
+                        ActionButton { text: "Skip"; icon: @image-url("icons/chevrons-right.svg"); clicked => { Tools.timer-skip(); } }
+                    }
+                    Text {
+                        text: Tools.timer-sessions == 0 ? "No focus sessions yet."
+                            : Tools.timer-sessions == 1 ? "1 focus session finished."
+                            : Tools.timer-sessions + " focus sessions finished.";
+                        color: Theme.muted; font-size: 13px; horizontal-alignment: center;
+                    }
+                    Label { text: Tools.timer-note; horizontal-alignment: center; max-width: 420px; }
+                }
+
+                // Calculator
+                if Tools.tab == 2: calc-scroll := ScrollView {
+                    vertical-stretch: 1;
+                    content-width: self.visible-width;
+                    content-height: max(self.visible-height, calc-body.preferred-height);
+                    calc-body := VerticalLayout {
+                        width: calc-scroll.width - 16px;
+                        spacing: 10px;
+                        TextField {
+                            text <=> Tools.calc-input;
+                            placeholder: "2 * (3 + 4)";
+                            label: "Expression";
+                            text-size: 17px;
+                            edited(text) => { Tools.calc-edited(text); }
+                        }
+                        Rectangle {
+                            background: Theme.sunken; border-radius: 8px;
+                            border-width: 1px; border-color: Theme.line;
+                            VerticalLayout {
+                                padding: 12px; spacing: 2px;
+                                Text { text: "RESULT"; color: Theme.faint; font-size: 10px; font-weight: 700; letter-spacing: 0.8px; }
+                                Text { text: Tools.calc-result; color: Theme.text; font-size: 30px; font-weight: 700; overflow: elide; }
+                            }
+                        }
+                        HorizontalLayout { spacing: 6px; for key in ["C", "(", ")", "/"]: CalcKey { text: key; pressed => { Tools.calc-key(key); } } }
+                        HorizontalLayout { spacing: 6px; for key in ["7", "8", "9", "*"]: CalcKey { text: key; pressed => { Tools.calc-key(key); } } }
+                        HorizontalLayout { spacing: 6px; for key in ["4", "5", "6", "-"]: CalcKey { text: key; pressed => { Tools.calc-key(key); } } }
+                        HorizontalLayout { spacing: 6px; for key in ["1", "2", "3", "+"]: CalcKey { text: key; pressed => { Tools.calc-key(key); } } }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            CalcKey { text: "Back"; key: "back"; pressed => { Tools.calc-key("back"); } }
+                            CalcKey { text: "0"; pressed => { Tools.calc-key("0"); } }
+                            CalcKey { text: "."; pressed => { Tools.calc-key("."); } }
+                            CalcKey { text: "="; key: "="; accent: true; pressed => { Tools.calc-key("="); } }
+                        }
+                        Label { text: Tools.calc-note; }
+                    }
+                }
+
+                // Clipboard
+                if Tools.tab == 3: VerticalLayout {
+                    spacing: 8px; vertical-stretch: 1;
+                    HorizontalLayout {
+                        Label { text: Tools.clip-note; vertical-alignment: center; horizontal-stretch: 1; }
+                        ActionButton { text: "Clear"; icon: @image-url("icons/trash-2.svg"); small: true; clicked => { Tools.clear-clips(); } }
+                    }
+                    if Tools.clips.length == 0: Rectangle {
+                        vertical-stretch: 1;
+                        background: Theme.sunken; border-radius: 8px;
+                        border-width: 1px; border-color: Theme.line;
+                        VerticalLayout {
+                            alignment: center; spacing: 8px;
+                            Image { width: 28px; height: 28px; source: @image-url("icons/clipboard-paste.svg"); colorize: Theme.faint; }
+                            Text { text: "Copy something and it shows here."; color: Theme.muted; font-size: 14px; horizontal-alignment: center; }
+                        }
+                    }
+                    if Tools.clips.length > 0: clip-scroll := ScrollView {
+                        vertical-stretch: 1;
+                        content-width: self.visible-width;
+                        content-height: max(self.visible-height, clip-list.preferred-height);
+                        clip-list := VerticalLayout {
+                            width: clip-scroll.width - 16px;
+                            spacing: 6px;
+                            for clip[index] in Tools.clips: Rectangle {
+                                background: Theme.sunken; border-radius: 8px;
+                                border-width: 1px; border-color: Theme.line;
+                                height: max(56px, clip-row.preferred-height + 16px);
+                                clip-row := HorizontalLayout {
+                                    padding: 10px; spacing: 10px;
+                                    VerticalLayout {
+                                        spacing: 3px; horizontal-stretch: 1;
+                                        Text { text: clip.text; color: Theme.text; font-size: 13px; wrap: word-wrap; max-height: 42px; overflow: elide; }
+                                        Text { text: clip.when; color: Theme.faint; font-size: 11px; }
+                                    }
+                                    Middle {
+                                        HorizontalLayout {
+                                            spacing: 4px;
+                                            ActionButton { text: "Copy"; small: true; ghost: true; clicked => { Tools.copy(clip.text); } }
+                                            ActionButton { text: "Use"; small: true; ghost: true; clicked => { Tools.insert(clip.text); } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Saved: snippets and bookmarks
+                if Tools.tab == 4: saved-scroll := ScrollView {
+                    vertical-stretch: 1;
+                    content-width: self.visible-width;
+                    content-height: saved-list.preferred-height;
+                    saved-list := VerticalLayout {
+                        width: saved-scroll.width - 16px;
+                        spacing: 8px;
+                        ToolHeading { text: "SNIPPETS"; }
+                        Label { text: "Short pieces of text to put in the composer: an address, a greeting, a command."; }
+                        HorizontalLayout {
+                            spacing: 6px;
+                            TextField {
+                                width: 150px;
+                                text <=> Tools.snippet-name;
+                                placeholder: "Name"; pad: 8px; text-size: 13px;
+                            }
+                            TextField {
+                                horizontal-stretch: 1;
+                                text <=> Tools.snippet-body;
+                                placeholder: "Text"; pad: 8px; text-size: 13px;
+                                accepted => { Tools.add-snippet(); }
+                            }
+                            ActionButton {
+                                text: "Add"; small: true; primary: true;
+                                enabled: Tools.snippet-body != "";
+                                clicked => { Tools.add-snippet(); }
+                            }
+                        }
+                        if Tools.snippets.length == 0: Label { text: "No snippets yet."; }
+                        for snippet[index] in Tools.snippets: Rectangle {
+                            background: Theme.sunken; border-radius: 8px;
+                            border-width: 1px; border-color: Theme.line;
+                            height: max(46px, snippet-row.preferred-height + 12px);
+                            snippet-row := HorizontalLayout {
+                                padding: 8px; spacing: 8px;
+                                VerticalLayout {
+                                    spacing: 1px; horizontal-stretch: 1;
+                                    Text {
+                                        text: EmojiText.text(snippet.name == "" ? snippet.body : snippet.name);
+                                        color: Theme.text; font-size: 13px; font-weight: 600; overflow: elide;
+                                    }
+                                    if snippet.name != "": Text { text: EmojiText.text(snippet.body); color: Theme.muted; font-size: 12px; overflow: elide; }
+                                }
+                                Middle {
+                                    HorizontalLayout {
+                                        spacing: 2px;
+                                        IconButton { icon: @image-url("icons/send-horizontal.svg"); label: "Put in the composer"; size: 28px; glyph: 15px; clicked => { Tools.use-snippet(index); } }
+                                        IconButton { icon: @image-url("icons/copy.svg"); label: "Copy snippet"; size: 28px; glyph: 15px; clicked => { Tools.copy-snippet(index); } }
+                                        IconButton { icon: @image-url("icons/trash-2.svg"); label: "Delete snippet"; size: 28px; glyph: 15px; danger: true; clicked => { Tools.delete-snippet(index); } }
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { height: 1px; background: Theme.line; }
+                        ToolHeading { text: "BOOKMARKS"; }
+                        Label { text: "Messages kept from their right-click menu, or the menu beside them."; }
+                        if Tools.bookmarks.length == 0: Label { text: "No bookmarks yet."; }
+                        for bookmark[index] in Tools.bookmarks: Rectangle {
+                            background: Theme.sunken; border-radius: 8px;
+                            border-width: 1px; border-color: Theme.line;
+                            height: max(62px, bookmark-row.preferred-height + 14px);
+                            bookmark-row := HorizontalLayout {
+                                padding: 9px; spacing: 8px;
+                                VerticalLayout {
+                                    spacing: 2px; horizontal-stretch: 1;
+                                    Text {
+                                        text: EmojiText.text("#" + bookmark.room-name + " - " + bookmark.author + (bookmark.when == "" ? "" : " - " + bookmark.when));
+                                        color: Theme.accent; font-size: 10px; font-weight: 700; overflow: elide;
+                                    }
+                                    Text {
+                                        text: EmojiText.text(bookmark.body);
+                                        color: Theme.text; font-size: 12px;
+                                        wrap: word-wrap; max-height: 34px; overflow: elide;
+                                    }
+                                }
+                                Middle {
+                                    HorizontalLayout {
+                                        spacing: 2px;
+                                        IconButton { icon: @image-url("icons/send-horizontal.svg"); label: "Jump to the message"; size: 28px; glyph: 15px; clicked => { Tools.jump-bookmark(index); } }
+                                        IconButton { icon: @image-url("icons/copy.svg"); label: "Copy the message"; size: 28px; glyph: 15px; clicked => { Tools.copy-bookmark(index); } }
+                                        IconButton { icon: @image-url("icons/trash-2.svg"); label: "Remove the bookmark"; size: 28px; glyph: 15px; danger: true; clicked => { Tools.delete-bookmark(index); } }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // System
+                if Tools.tab == 5: VerticalLayout {
+                    spacing: 10px;
+                    vertical-stretch: 1;
+                    alignment: start;
+                    ToolHeading { text: "MEMORY"; }
+                    StatRow { label: "Litecord"; value: Tools.own-memory; }
+                    StatRow { label: "This computer"; value: Tools.system-memory; }
+                    ToolHeading { text: "DISK"; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        StatRow { label: "Media cache"; value: Tools.cache-size; horizontal-stretch: 1; }
+                        Middle {
+                            HorizontalLayout {
+                                spacing: 6px;
+                                ActionButton { text: "Clear cache"; icon: @image-url("icons/trash-2.svg"); small: true; clicked => { Tools.clear-cache(); } }
+                                ActionButton { text: "Open folder"; icon: @image-url("icons/folder.svg"); small: true; clicked => { Tools.open-data-folder(); } }
+                            }
+                        }
+                    }
+                    Text { text: Tools.data-folder; color: Theme.faint; font-size: 11px; overflow: elide; vertical-stretch: 0; }
+                    Rectangle { height: 1px; background: Theme.line; }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Label {
+                            text: Tools.build;
+                            vertical-alignment: center; horizontal-stretch: 1;
+                        }
+                        ActionButton { text: "Refresh"; icon: @image-url("icons/refresh-cw.svg"); small: true; clicked => { Tools.refresh-system(); } }
+                    }
+                    Label {
+                        text: "Clearing the cache frees pictures, previews and GIF thumbnails; they are fetched again when next shown. Messages and settings stay.";
+                    }
+                }
+
+                // The last word: what just happened, or how the tool works.
+                Text {
+                    text: Tools.status;
+                    visible: Tools.status != "";
+                    color: Theme.live; font-size: 12px; horizontal-alignment: center;
+                    overflow: elide;
+                    vertical-stretch: 0;
+                }
+            }
+        }
+    }
+}

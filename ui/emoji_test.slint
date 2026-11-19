@@ -1,0 +1,68 @@
+import { ScrollView } from "scrollview.slint";
+import { Theme, EmojiText } from "theme.slint";
+
+// A size's line: its size at the left, then the emoji as the chat sets them.
+component SizeRow inherits HorizontalLayout {
+    in property <length> size: 16px;
+    in property <string> label;
+    in property <string> sample;
+    min-height: max(root.size * 1.25, 28px);
+    spacing: 16px;
+    Text {
+        width: 56px; text: root.label;
+        color: Theme.faint; font-size: 12px; vertical-alignment: top;
+    }
+    Text {
+        text: EmojiText.text(root.sample); font-size: root.size;
+        wrap: word-wrap;
+    }
+}
+
+// The emoji test screen: every size the interface sets, then the sequences
+// that must join into one picture, and a line of mixed text. It draws over
+// the window while `--emoji-test` starts, for checking the pack by eye.
+export component EmojiTestScreen inherits Rectangle {
+    background: Theme.chat;
+    vertical-stretch: 1; horizontal-stretch: 1;
+    // Clicks on the screen don't reach the chat behind it.
+    TouchArea { }
+    ScrollView {
+        width: parent.width; height: parent.height;
+        content-width: self.visible-width;
+        content-height: max(self.visible-height, sheet.preferred-height + 48px);
+        sheet := VerticalLayout {
+            x: 24px; y: 24px; width: parent.width - 48px;
+            alignment: start; spacing: 8px;
+            Text { text: "Emoji test"; color: Theme.text; font-size: 24px; font-weight: 800; }
+            Text {
+                text: "Every size the chat sets, the sequences that must join into one picture, and mixed text. Litecord's own pack, drawn by its private font.";
+                color: Theme.muted; font-size: 14px; wrap: word-wrap;
+            }
+            Rectangle { height: 8px; }
+            SizeRow { label: "16 px"; size: 16px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀"; }
+            SizeRow { label: "20 px"; size: 20px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀"; }
+            SizeRow { label: "24 px"; size: 24px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀"; }
+            SizeRow { label: "32 px"; size: 32px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀"; }
+            SizeRow { label: "48 px"; size: 48px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀"; }
+            SizeRow { label: "64 px"; size: 64px; sample: "😀 😂 🥹 😭 🥶 😎 ❤️ 🔥"; }
+            Rectangle { height: 1px; background: Theme.line; }
+            Text { text: "Sequences"; color: Theme.text; font-size: 16px; font-weight: 700; }
+            SizeRow { label: "20 px"; size: 20px; sample: "👨‍👩‍👧‍👦 👨🏽‍💻 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶"; }
+            SizeRow { label: "24 px"; size: 24px; sample: "👨‍👩‍👧‍👦 👨🏽‍💻 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶"; }
+            SizeRow { label: "32 px"; size: 32px; sample: "👨‍👩‍👧‍👦 👨🏽‍💻 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶"; }
+            SizeRow { label: "48 px"; size: 48px; sample: "👨‍👩‍👧‍👦 👨🏽‍💻 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶"; }
+            SizeRow { label: "64 px"; size: 64px; sample: "👨‍👩‍👧‍👦 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶"; }
+            Rectangle { height: 1px; background: Theme.line; }
+            Text { text: "Mixed text"; color: Theme.text; font-size: 16px; font-weight: 700; }
+            Text {
+                text: EmojiText.text("Sam 🎮 is playing tonight ✨ — family 👨‍👩‍👧‍👦 and flag 🇮🇩 say hi 👋🏽, heart ❤️‍🔥, hands 🫶.");
+                color: Theme.text; font-size: 20px; wrap: word-wrap;
+            }
+            Text {
+                text: EmojiText.text("At 16 px: 😀 😂 🥹 😭 🥶 😎 ❤️ 🔥 ✨ 👀 · 👨‍👩‍👧‍👦 👨🏽‍💻 🏳️‍🌈 🇮🇩 ❤️‍🔥 🫶");
+                color: Theme.secondary; font-size: 16px; wrap: word-wrap;
+            }
+            Rectangle { height: 16px; }
+        }
+    }
+}

@@ -1,0 +1,5 @@
+# Signatures and the exact bytes they sign: Git must never rewrite their line
+# endings, or a signature made over LF sums stops verifying in a Windows
+# checkout. Windows' `core.autocrlf` gets this right only with these.
+src/update/testdata/** -text
+packaging/keys/*.pub -text

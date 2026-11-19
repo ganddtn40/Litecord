@@ -1,0 +1,44 @@
+# Sourced before building a binary people download: `source scripts/release-env
+# TARGET`, then plain `cargo build --target TARGET`. Rust embeds source paths for panic messages, and C's __FILE__ ends
+# up in error messages too; they'd name the folders of the machine that built
+# it, its owner's home folder among them. These flags name none.
+# CARGO_ENCODED_RUSTFLAGS replaces .cargo/config.toml's rustflags, so a
+# target's own come along here.
+litecord_release_target=${1:?usage: source scripts/release-env TARGET}
+litecord_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# Widest first: rustc and Clang take the last mapping that matches.
+litecord_maps=("$HOME=/home" "${CARGO_HOME:-$HOME/.cargo}=/cargo" "$litecord_root=/litecord")
+litecord_rust=()
+litecord_c=()
+for map in "${litecord_maps[@]}"; do
+  litecord_rust+=("--remap-path-prefix=$map")
+  litecord_c+=("-ffile-prefix-map=$map")
+done
+case "$litecord_release_target" in
+  x86_64-pc-windows-msvc)
+    # Match LiveKit's Windows runtime linkage, as .cargo/config.toml does.
+    litecord_rust=(-Ctarget-feature=+crt-static "${litecord_rust[@]}")
+    # cargo-xwin compiles C with clang-cl, which takes Clang's flags this way.
+    litecord_c=("${litecord_c[@]/#//clang:}") ;;
+  x86_64-unknown-linux-gnu) ;;
+  *) echo "scripts/release-env: no flags known for $litecord_release_target" >&2; return 2 ;;
+esac
+CARGO_ENCODED_RUSTFLAGS=$(IFS=$'\x1f'; printf '%s' "${litecord_rust[*]}")
+export CARGO_ENCODED_RUSTFLAGS
+# The cc crate reads only the first of CFLAGS_<target> and its fallbacks, and
+# `cargo xwin build` sets that one, so take its environment, which adds to
+# these rustflags, and add the C flags to what it sets.
+litecord_target_flags=${litecord_release_target//-/_}
+if [[ "$litecord_release_target" == *-windows-msvc ]]; then
+  eval "$(cargo xwin env --target "$litecord_release_target")"
+  # thorvg-sys tells bindgen's libclang `--target=x86_64-none-elf` on every
+  # cross build, which can't read the MSVC headers. bindgen adds these
+  # arguments after a build script's, and Clang takes the last target.
+  litecord_bindgen="BINDGEN_EXTRA_CLANG_ARGS_$litecord_target_flags"
+  export "$litecord_bindgen=${!litecord_bindgen:-} --target=$litecord_release_target"
+fi
+litecord_cflags="CFLAGS_$litecord_target_flags" litecord_cxxflags="CXXFLAGS_$litecord_target_flags"
+export "$litecord_cflags=${!litecord_cflags:-} ${litecord_c[*]}"
+export "$litecord_cxxflags=${!litecord_cxxflags:-} ${litecord_c[*]}"
+unset litecord_release_target litecord_root litecord_maps litecord_rust litecord_c map \
+  litecord_target_flags litecord_cflags litecord_cxxflags litecord_bindgen

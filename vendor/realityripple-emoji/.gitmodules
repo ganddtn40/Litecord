@@ -1,0 +1,30 @@
+[submodule "sources/noto-emoji"]
+	path = sources/noto-emoji
+	url = https://github.com/googlefonts/noto-emoji.git
+[submodule "sources/blobmoji"]
+	path = sources/blobmoji
+	url = https://github.com/RealityRipple/blobmoji.git
+[submodule "sources/openmoji"]
+	path = sources/openmoji
+	url = https://github.com/hfg-gmuend/openmoji.git
+[submodule "sources/twemoji"]
+	path = sources/twemoji
+	url = https://github.com/RealityRipple/twemoji.git
+[submodule "sources/fbmoji"]
+	path = sources/fbmoji
+	url = https://github.com/RealityRipple/fbmoji.git
+[submodule "sources/joypixels"]
+	path = sources/joypixels
+	url = https://github.com/joypixels/emoji-assets.git
+[submodule "sources/apple-emoji-linux"]
+	path = sources/apple-emoji-linux
+	url = https://github.com/samuelngs/apple-emoji-linux.git
+[submodule "sources/tossface"]
+	path = sources/tossface
+	url = https://github.com/RealityRipple/tossface
+[submodule "sources/whatsapp-emoji-linux"]
+	path = sources/whatsapp-emoji-linux
+	url = https://github.com/dmlls/whatsapp-emoji-linux.git
+[submodule "sources/oneui-emoji"]
+	path = sources/oneui-emoji
+	url = https://github.com/RealityRipple/oneui-emoji.git

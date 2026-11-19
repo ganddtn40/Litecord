@@ -1,0 +1,36 @@
+---
+name: Bug report
+about: Something in Litecord is broken or looks wrong
+title: ""
+labels: bug
+assignees: ""
+---
+
+**What happened**
+
+**What you expected**
+
+**Steps to reproduce**
+
+1.
+2.
+3.
+
+**Version**
+
+Paste the line from **Settings → About → Copy version**:
+
+```
+
+```
+
+**System**
+
+- OS and version (Windows 10/11, distribution, desktop):
+- Display server, on Linux (X11 or Wayland):
+- Renderer, if you changed it (software or GPU):
+
+**Logs or screenshots**
+
+Drag screenshots in here. Logs live in the data folder shown by the app; remove
+anything private first.

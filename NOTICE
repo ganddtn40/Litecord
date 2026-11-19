@@ -1,0 +1,19 @@
+Litecord
+Copyright (C) 2026 ganddtn40
+https://github.com/ganddtn40/litecord
+
+Litecord is a rebranded derivative of Yapfast
+(https://github.com/yapfast/yapfast). The original code is copyright the
+Yapfast authors and is licensed under the GNU General Public License,
+version 3 or later. That licence, and the copyright notices it preserves,
+continue to apply to the derived work.
+
+The Apple emoji artwork under vendor/realityripple-emoji is copyright
+Apple Inc. and is distributed under the terms in
+vendor/realityripple-emoji/LICENSE-APPLE.
+
+Bundled third-party components retain their own copyright notices and
+licences. Every release includes those notices in its licenses/ folder.
+
+Litecord is not affiliated with or endorsed by Discord Inc. Discord is a
+trademark of Discord Inc.

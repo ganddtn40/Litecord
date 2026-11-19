@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Litecord: a monochrome chat bubble with a bolt, on a rounded black tile. -->
+  <rect x="64" y="64" width="896" height="896" rx="216" fill="#0B0B0C"/>
+  <rect x="208" y="208" width="608" height="456" rx="132" fill="#FFFFFF"/>
+  <path d="M336 600 L292 796 L548 646 Z" fill="#FFFFFF"/>
+  <path d="M572 288 L448 516 L534 516 L488 622 L638 436 L548 436 Z" fill="#0B0B0C"/>
+</svg>
